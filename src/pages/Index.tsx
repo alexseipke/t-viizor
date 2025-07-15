@@ -84,9 +84,9 @@ const Index = () => {
             Plataforma de Nubes de Puntos Georreferenciadas
           </Badge>
           
-          <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-red-500">
+          <h1 className="text-4xl md:text-6xl font-bold tracking-tight text-green-500">
             esto es t.viizor,
-            <span className="text-red-600 block">datos geoespaciales</span>
+            <span className="text-green-600 block">datos geoespaciales</span>
             tratados con amor
           </h1>
           
