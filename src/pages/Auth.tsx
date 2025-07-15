@@ -43,33 +43,108 @@ const Auth = () => {
     checkUser();
   }, [navigate]);
 
+  const getErrorMessage = (error: any) => {
+    const errorCode = error.message || error.error_description || '';
+    
+    // Mensajes específicos en español para errores comunes
+    if (errorCode.includes('Invalid login credentials')) {
+      return 'Email o contraseña incorrectos. Verifica tus datos e intenta nuevamente.';
+    }
+    if (errorCode.includes('Email not confirmed')) {
+      return 'Debes confirmar tu email antes de iniciar sesión. Revisa tu bandeja de entrada.';
+    }
+    if (errorCode.includes('Too many requests')) {
+      return 'Demasiados intentos. Espera unos minutos antes de intentar nuevamente.';
+    }
+    if (errorCode.includes('User not found')) {
+      return 'No existe una cuenta con este email. ¿Quieres registrarte?';
+    }
+    if (errorCode.includes('Invalid email')) {
+      return 'El formato del email no es válido.';
+    }
+    if (errorCode.includes('Password should be at least 6 characters')) {
+      return 'La contraseña debe tener al menos 6 caracteres.';
+    }
+    if (errorCode.includes('User already registered')) {
+      return 'Ya existe una cuenta con este email. ¿Quieres iniciar sesión?';
+    }
+    if (errorCode.includes('Signup is disabled')) {
+      return 'El registro está temporalmente deshabilitado. Contacta al administrador.';
+    }
+    
+    // Mensaje genérico para otros errores
+    return errorCode || 'Ocurrió un error inesperado. Intenta nuevamente.';
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validaciones básicas
+    if (!loginData.email || !loginData.password) {
+      toast({
+        title: "Campos requeridos",
+        description: "Por favor completa todos los campos",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(loginData.email)) {
+      toast({
+        title: "Email inválido",
+        description: "Por favor ingresa un email válido",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: loginData.email,
         password: loginData.password,
       });
 
       if (error) {
+        const errorMessage = getErrorMessage(error);
         toast({
-          title: "Error de autenticación",
-          description: error.message,
+          title: "No se pudo iniciar sesión",
+          description: errorMessage,
           variant: "destructive",
         });
-      } else {
+        
+        // Si el usuario no existe, sugerir registro
+        if (error.message.includes('Invalid login credentials')) {
+          setTimeout(() => {
+            toast({
+              title: "¿Usuario nuevo?",
+              description: "Si no tienes cuenta, puedes registrarte en la pestaña 'Registrarse'",
+            });
+          }, 2000);
+        }
+      } else if (data.user) {
+        // Verificar si el email está confirmado
+        if (!data.user.email_confirmed_at) {
+          toast({
+            title: "Email no confirmado",
+            description: "Por favor confirma tu email antes de continuar. Revisa tu bandeja de entrada.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
         toast({
           title: "¡Bienvenido!",
-          description: "Has iniciado sesión correctamente",
+          description: `Hola ${data.user.email}, sesión iniciada correctamente`,
         });
         navigate("/dashboard");
       }
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Ocurrió un error inesperado",
+        title: "Error de conexión",
+        description: "Verifica tu conexión a internet e intenta nuevamente",
         variant: "destructive",
       });
     } finally {
@@ -80,10 +155,30 @@ const Auth = () => {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Validaciones completas
+    if (!registerData.email || !registerData.password || !registerData.confirmPassword) {
+      toast({
+        title: "Campos requeridos",
+        description: "Por favor completa todos los campos obligatorios",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(registerData.email)) {
+      toast({
+        title: "Email inválido",
+        description: "Por favor ingresa un email válido",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (registerData.password !== registerData.confirmPassword) {
       toast({
-        title: "Error",
-        description: "Las contraseñas no coinciden",
+        title: "Contraseñas no coinciden",
+        description: "Asegúrate de que ambas contraseñas sean idénticas",
         variant: "destructive",
       });
       return;
@@ -91,17 +186,25 @@ const Auth = () => {
 
     if (registerData.password.length < 6) {
       toast({
-        title: "Error",
+        title: "Contraseña muy corta",
         description: "La contraseña debe tener al menos 6 caracteres",
         variant: "destructive",
       });
       return;
     }
 
+    // Validación de contraseña más robusta
+    if (!/(?=.*[a-z])(?=.*[A-Z])|(?=.*\d)/.test(registerData.password)) {
+      toast({
+        title: "Contraseña débil",
+        description: "Usa al menos una mayúscula, minúscula o número para mayor seguridad",
+      });
+    }
+
     setIsLoading(true);
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: registerData.email,
         password: registerData.password,
         options: {
@@ -114,22 +217,54 @@ const Auth = () => {
       });
 
       if (error) {
+        const errorMessage = getErrorMessage(error);
         toast({
-          title: "Error de registro",
-          description: error.message,
+          title: "Error en el registro",
+          description: errorMessage,
           variant: "destructive",
         });
-      } else {
-        toast({
-          title: "¡Registro exitoso!",
-          description: "Revisa tu email para confirmar tu cuenta",
+        
+        // Si el usuario ya existe, sugerir login
+        if (error.message.includes('User already registered')) {
+          setTimeout(() => {
+            toast({
+              title: "¿Ya tienes cuenta?",
+              description: "Puedes iniciar sesión en la pestaña 'Iniciar Sesión'",
+            });
+            setActiveTab("login");
+          }, 2000);
+        }
+      } else if (data.user) {
+        // Limpiar formulario
+        setRegisterData({
+          email: "",
+          password: "",
+          confirmPassword: "",
+          displayName: "",
+          company: "",
         });
+        
+        toast({
+          title: "¡Cuenta creada exitosamente!",
+          description: `Se envió un email de confirmación a ${data.user.email}. Revisa tu bandeja de entrada y spam.`,
+        });
+        
+        // Mostrar mensaje adicional
+        setTimeout(() => {
+          toast({
+            title: "Siguiente paso",
+            description: "Después de confirmar tu email, podrás iniciar sesión",
+          });
+        }, 3000);
+        
         setActiveTab("login");
+        // Pre-llenar el email en login
+        setLoginData({ ...loginData, email: registerData.email });
       }
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Ocurrió un error inesperado",
+        title: "Error de conexión",
+        description: "Verifica tu conexión a internet e intenta nuevamente",
         variant: "destructive",
       });
     } finally {
