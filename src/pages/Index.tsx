@@ -4,8 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Cloud, Zap, Shield, Users, Globe, ChevronRight, Check } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
 
 const Index = () => {
+  const { user } = useAuth();
   const features = [
     {
       icon: Cloud,
@@ -56,12 +58,20 @@ const Index = () => {
             <span className="font-bold text-xl">Viizor Point Cloud Hub</span>
           </div>
           <nav className="flex items-center space-x-6 text-sm font-medium ml-auto">
-            <Link to="/login" className="text-foreground/60 hover:text-foreground">
-              Iniciar Sesión
-            </Link>
-            <Button asChild>
-              <Link to="/register">Comenzar Trial</Link>
-            </Button>
+            {user ? (
+              <Button asChild>
+                <Link to="/dashboard">Mi Dashboard</Link>
+              </Button>
+            ) : (
+              <>
+                <Link to="/auth" className="text-foreground/60 hover:text-foreground">
+                  Iniciar Sesión
+                </Link>
+                <Button asChild>
+                  <Link to="/auth">Comenzar Trial</Link>
+                </Button>
+              </>
+            )}
           </nav>
         </div>
       </header>
@@ -87,7 +97,7 @@ const Index = () => {
           
           <div className="flex flex-col sm:flex-row gap-4">
             <Button size="lg" asChild>
-              <Link to="/register">
+              <Link to="/auth">
                 Comenzar Trial Gratuito
                 <ChevronRight className="ml-2 h-4 w-4" />
               </Link>
@@ -161,7 +171,7 @@ const Index = () => {
                   variant={plan.highlighted ? "default" : "outline"}
                   asChild
                 >
-                  <Link to="/register">
+                  <Link to="/auth">
                     {plan.name === "Trial" ? "Comenzar Trial" : "Suscribirse"}
                   </Link>
                 </Button>

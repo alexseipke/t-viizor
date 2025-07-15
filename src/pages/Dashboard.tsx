@@ -1,14 +1,15 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import FileUpload from "@/components/FileUpload";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Cloud, 
-  Upload, 
   Eye, 
   Share2, 
   Calendar, 
@@ -18,44 +19,81 @@ import {
   Settings,
   Plus,
   FileText,
-  Clock
+  Clock,
+  LogOut
 } from "lucide-react";
 
+interface Project {
+  id: string;
+  name: string;
+  status: string;
+  original_filename?: string;
+  file_size?: number;
+  processing_progress?: number;
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 const Dashboard = () => {
-  const [storageUsed] = useState(2.3); // GB
-  const [trialDaysLeft] = useState(5);
-  
-  // Mock data for projects
-  const projects = [
-    {
-      id: 1,
-      name: "Topografía Campus Universidad",
-      status: "completed",
-      uploadDate: "2024-01-15",
-      fileSize: "450 MB",
-      format: ".laz",
-      sharedLinks: 2
-    },
-    {
-      id: 2,
-      name: "Levantamiento Edificio Histórico",
-      status: "processing",
-      uploadDate: "2024-01-16",
-      fileSize: "1.2 GB",
-      format: ".las",
-      sharedLinks: 0,
-      progress: 65
-    },
-    {
-      id: 3,
-      name: "Análisis Forestal Zona Norte",
-      status: "ready",
-      uploadDate: "2024-01-14",
-      fileSize: "780 MB",
-      format: ".laz",
-      sharedLinks: 1
+  const { user, signOut } = useAuth();
+  const { toast } = useToast();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [storageUsed, setStorageUsed] = useState(0);
+
+  // Obtener proyectos del usuario
+  const fetchProjects = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setProjects(data || []);
+      
+      // Calcular almacenamiento usado
+      const totalSize = data?.reduce((acc, project) => acc + (project.file_size || 0), 0) || 0;
+      setStorageUsed(totalSize / (1024 * 1024 * 1024)); // Convertir a GB
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los proyectos",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
+
+  useEffect(() => {
+    fetchProjects();
+  }, [user]);
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast({
+      title: "Sesión cerrada",
+      description: "Has cerrado sesión correctamente",
+    });
+  };
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return "0 B";
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('es-ES');
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -63,17 +101,22 @@ const Dashboard = () => {
         return <Badge className="bg-green-500">Completado</Badge>;
       case 'processing':
         return <Badge variant="secondary">Procesando</Badge>;
-      case 'ready':
-        return <Badge className="bg-blue-500">Listo para ver</Badge>;
+      case 'pending':
+        return <Badge className="bg-blue-500">Pendiente</Badge>;
+      case 'error':
+        return <Badge variant="destructive">Error</Badge>;
       default:
         return <Badge variant="outline">Desconocido</Badge>;
     }
   };
 
-  const handleUploadComplete = (projectId: string) => {
-    console.log('Upload completed for project:', projectId);
-    // TODO: Refresh projects list or redirect to project view
+  const handleUploadComplete = () => {
+    // Recargar proyectos después de subir
+    fetchProjects();
   };
+
+  const processingProjects = projects.filter(p => p.status === 'processing').length;
+  const sharedLinks = 0; // TODO: Implementar conteo de enlaces compartidos
 
   return (
     <div className="min-h-screen bg-background">
@@ -82,16 +125,15 @@ const Dashboard = () => {
         <div className="container flex h-14 items-center justify-between">
           <div className="flex items-center">
             <Cloud className="h-6 w-6 text-primary mr-2" />
-            <span className="font-bold text-xl">Dashboard</span>
+            <span className="font-bold text-xl">t.viizor Dashboard</span>
           </div>
           <div className="flex items-center space-x-4">
-            <Badge variant="outline" className="flex items-center">
-              <Clock className="h-3 w-3 mr-1" />
-              Trial: {trialDaysLeft} días restantes
-            </Badge>
-            <Button variant="outline" size="sm">
-              <Settings className="h-4 w-4 mr-2" />
-              Configuración
+            <span className="text-sm text-muted-foreground">
+              Hola, {user?.email}
+            </span>
+            <Button variant="outline" size="sm" onClick={handleSignOut}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Cerrar Sesión
             </Button>
           </div>
         </div>
@@ -106,8 +148,8 @@ const Dashboard = () => {
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">3</div>
-              <p className="text-xs text-muted-foreground">+1 este mes</p>
+              <div className="text-2xl font-bold">{projects.length}</div>
+              <p className="text-xs text-muted-foreground">archivos subidos</p>
             </CardContent>
           </Card>
 
@@ -117,7 +159,7 @@ const Dashboard = () => {
               <HardDrive className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{storageUsed}GB</div>
+              <div className="text-2xl font-bold">{storageUsed.toFixed(2)}GB</div>
               <Progress value={(storageUsed / 5) * 100} className="mt-2" />
               <p className="text-xs text-muted-foreground mt-1">de 5GB disponibles</p>
             </CardContent>
@@ -129,7 +171,7 @@ const Dashboard = () => {
               <Share2 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">3</div>
+              <div className="text-2xl font-bold">{sharedLinks}</div>
               <p className="text-xs text-muted-foreground">Links activos</p>
             </CardContent>
           </Card>
@@ -140,8 +182,8 @@ const Dashboard = () => {
               <Play className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">1</div>
-              <p className="text-xs text-muted-foreground">Proyecto procesando</p>
+              <div className="text-2xl font-bold">{processingProjects}</div>
+              <p className="text-xs text-muted-foreground">Proyectos procesando</p>
             </CardContent>
           </Card>
         </div>
@@ -156,75 +198,113 @@ const Dashboard = () => {
           <TabsContent value="projects" className="space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold">Mis Proyectos</h2>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Nuevo Proyecto
-              </Button>
             </div>
 
-            <div className="grid gap-4">
-              {projects.map((project) => (
-                <Card key={project.id}>
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="text-lg">{project.name}</CardTitle>
-                        <CardDescription className="flex items-center mt-2">
-                          <Calendar className="h-4 w-4 mr-1" />
-                          Subido: {project.uploadDate}
-                          <span className="mx-2">•</span>
-                          {project.fileSize} ({project.format})
-                        </CardDescription>
-                      </div>
-                      {getStatusBadge(project.status)}
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    {project.status === 'processing' && (
-                      <div className="mb-4">
-                        <div className="flex justify-between text-sm mb-2">
-                          <span>Procesando con PotreeConverter...</span>
-                          <span>{project.progress}%</span>
+            {loading ? (
+              <div className="text-center py-8">
+                <Clock className="h-8 w-8 animate-spin mx-auto mb-4" />
+                <p>Cargando proyectos...</p>
+              </div>
+            ) : projects.length === 0 ? (
+              <Card>
+                <CardContent className="text-center py-8">
+                  <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <h3 className="text-lg font-semibold mb-2">No tienes proyectos aún</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Sube tu primer archivo .las/.laz para comenzar
+                  </p>
+                  <Button asChild>
+                    <a href="#upload">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Subir primer proyecto
+                    </a>
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-4">
+                {projects.map((project) => (
+                  <Card key={project.id}>
+                    <CardHeader>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <CardTitle className="text-lg">{project.name}</CardTitle>
+                          <CardDescription className="flex items-center mt-2">
+                            <Calendar className="h-4 w-4 mr-1" />
+                            Subido: {formatDate(project.created_at)}
+                            {project.original_filename && (
+                              <>
+                                <span className="mx-2">•</span>
+                                {formatFileSize(project.file_size)} ({project.original_filename.split('.').pop()?.toUpperCase()})
+                              </>
+                            )}
+                          </CardDescription>
                         </div>
-                        <Progress value={project.progress} />
+                        {getStatusBadge(project.status)}
                       </div>
-                    )}
+                    </CardHeader>
                     
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center text-sm text-muted-foreground">
-                        <Share2 className="h-4 w-4 mr-1" />
-                        {project.sharedLinks} enlaces compartidos
-                      </div>
+                    <CardContent>
+                      {project.status === 'processing' && (
+                        <div className="mb-4">
+                          <div className="flex justify-between text-sm mb-2">
+                            <span>Procesando con PotreeConverter...</span>
+                            <span>{project.processing_progress || 0}%</span>
+                          </div>
+                          <Progress value={project.processing_progress || 0} />
+                        </div>
+                      )}
+
+                      {project.status === 'error' && project.error_message && (
+                        <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                          <p className="text-sm text-destructive">{project.error_message}</p>
+                        </div>
+                      )}
                       
-                      <div className="flex space-x-2">
-                        {project.status === 'completed' || project.status === 'ready' ? (
-                          <>
-                            <Button variant="outline" size="sm">
-                              <Eye className="h-4 w-4 mr-2" />
-                              Ver en Potree
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center text-sm text-muted-foreground">
+                          <Share2 className="h-4 w-4 mr-1" />
+                          0 enlaces compartidos
+                        </div>
+                        
+                        <div className="flex space-x-2">
+                          {project.status === 'completed' ? (
+                            <>
+                              <Button variant="outline" size="sm">
+                                <Eye className="h-4 w-4 mr-2" />
+                                Ver en Potree
+                              </Button>
+                              <Button variant="outline" size="sm">
+                                <Share2 className="h-4 w-4 mr-2" />
+                                Compartir
+                              </Button>
+                              <Button variant="outline" size="sm">
+                                <Download className="h-4 w-4 mr-2" />
+                                Descargar
+                              </Button>
+                            </>
+                          ) : project.status === 'processing' ? (
+                            <Button variant="outline" size="sm" disabled>
+                              <Clock className="h-4 w-4 mr-2" />
+                              Procesando...
                             </Button>
+                          ) : project.status === 'error' ? (
                             <Button variant="outline" size="sm">
-                              <Share2 className="h-4 w-4 mr-2" />
-                              Compartir
+                              Reintentar
                             </Button>
-                            <Button variant="outline" size="sm">
-                              <Download className="h-4 w-4 mr-2" />
-                              Descargar
+                          ) : (
+                            <Button variant="outline" size="sm" disabled>
+                              <Clock className="h-4 w-4 mr-2" />
+                              Pendiente...
                             </Button>
-                          </>
-                        ) : (
-                          <Button variant="outline" size="sm" disabled>
-                            <Clock className="h-4 w-4 mr-2" />
-                            Procesando...
-                          </Button>
-                        )}
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="upload" className="space-y-4">
