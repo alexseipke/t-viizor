@@ -85,9 +85,9 @@ const Index = () => {
           </Badge>
           
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight">
-            Procesa y Visualiza
-            <span className="text-primary block">Nubes de Puntos</span>
-            en la Nube
+            esto es t.viizor,
+            <span className="text-primary block">datos geoespaciales</span>
+            tratados con amor
           </h1>
           
           <p className="text-xl text-muted-foreground max-w-2xl">
